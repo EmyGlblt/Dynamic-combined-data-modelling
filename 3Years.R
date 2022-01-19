@@ -4,20 +4,20 @@ library(lattice)
 library(spatstat)
 library(data.table)
 library(raster)
-#library(rasterVis)
+library(rasterVis)
 library(ROCR)
 library(gridExtra)
 library(grid)
 library(latticeExtra)
-#library(NLMR)
-#library(viridisLite)
+library(NLMR)
+library(viridisLite)
 library(abind)
 library(TMB)
 library(purrr)
-#library(futile.matrix)
+library(ppmlasso)
 
-
-source("Share Functions_original.R")
+source("Share Functions_original.R") # This function comes from :
+# Renner, IW, Louvrier, J, Gimenez, O. Combining multiple data sources in species distribution models while accounting for spatial dependence and overfitting with combined penalized likelihood maximization. Methods Ecol Evol. 2019; 10: 2118– 2128. https://doi-org.ezproxy.newcastle.edu.au/10.1111/2041-210X.13297
 
 source("DynSharfunction_TMB18062020_GPlasso.R")
 
@@ -49,9 +49,6 @@ win   = owin(xrange = c(0, 30), yrange = c(0, 30))
 set.seed(3)
 n_centers = 2000
 centers = matrix(runif(n_centers, 1, 29), n_centers/2, 2)
-# plot(centers[,1], centers[,2], xlim = c(0, 30), ylim = c(0, 30),
-# xlab = "X", ylab = "Y", main = "Population of Patch Centers",
-# asp = 1)
 
 
 set.seed(3)
@@ -116,21 +113,16 @@ l3 = levelplot(z3 ~ quad[,1] + quad[,2], main = "z3: detection covariate",
 l3
 
 ### Covariates set up
-#comb_levObj <- c(Lv3, Lv4, ldrd, l3, Lv1, Lv2,Lv1.2, Lv2.2,  
-#                 layout = c(4, 2), merge.legends = F)
-#update(comb_levObj, main="Environmental covariates and bias")
 
 # from raster to dataframe for the landscape variables
-#Datav1 = scale(as.data.frame(flip(v1,2)))
-#Datav2 = scale(as.data.frame(flip(v2,2)))
-#Datav1.2 = scale(as.data.frame(flip(v1.2,2)))
-#Datav2.2 = scale(as.data.frame(flip(v2.2,2)))
-#Datav3 = scale(as.data.frame(flip(v3,2)))
-#Datav4 = scale(as.data.frame(flip(v4,2)))
+Datav1 = scale(as.data.frame(flip(v1,2)))
+Datav2 = scale(as.data.frame(flip(v2,2)))
+Datav1.2 = scale(as.data.frame(flip(v1.2,2)))
+Datav2.2 = scale(as.data.frame(flip(v2.2,2)))
+Datav3 = scale(as.data.frame(flip(v3,2)))
+Datav4 = scale(as.data.frame(flip(v4,2)))
 d_rd = scale(sqrt(d_rd1))
-#v8 = scales::rescale(z3, to=c(0,1))
 v8 = scale(z3)
-#v8=z3/1000
 
 set.seed(50)
 d1 = makecovar(40)
@@ -656,7 +648,6 @@ occ_quadrow3 = match(occ_paste, quad_paste)
 
 
 p_detect3 = clogloginv(v8[occ_quadrow3])*occ_present3
-#p_detect2 = expit(v8[occ_quadrow2])*occ_present2
 
 n_visits = 5
 sim_history3 = matrix(as.integer(matrix(rep(p_detect3, times = n_visits),
@@ -684,13 +675,11 @@ plot_z3[occ_match] = site_sum3
 ## Set up some arguments
 
 # year 1
-#PO1yr1_rows = sample(1:PO_year1$n, PO_year1$n)
 po1_env = sp_env[PO1_rows,]
 occ_env = quads[occ_quadrow1,]
 
 # year 2
 # get the rows
-#PO2yr2_rows = sample(1:PO_year2$n, PO_year2$n)
 po2_env = sp_env2[PO2_rows,]
 occ_env2 = quads2[occ_quadrow2,]
 
@@ -702,8 +691,6 @@ occ_env3 = quads3[occ_quadrow3,]
 
 
 ## list for the years
-#po_env.d = list(po1_env, po2_env)
-#occ_env.d = list(occ_env, occ_env2)
 env_y1 = list(po1_env, occ_env)
 env_y2 = list(po2_env, occ_env2)  
 env_y3 = list(po3_env, occ_env3) 
@@ -720,10 +707,8 @@ env_formula = ~ V1 + V2 + V1.1 + V2.2+ D1 + D2 + V3 + V4
 bias_formula = list(list(~ d_rd, ~ v8), list(~ d_rd, ~ v8), list(~ d_rd, ~ v8))
 
 quad_data = Quad.dyn
-#sp_data = list(po_env.d, occ_env.d)
 sp_data = list(env_y1, env_y2, env_y3)
-#sp_y = list(list(rep(1, nrow(po1_env)),rep(1, nrow(po2_env))), 
-#            list(sim_history, sim_history2))
+
 sp_y = list(list(rep(1, nrow(po1_env)),sim_history), 
             list(rep(1, nrow(po2_env)), sim_history2),
             list(rep(1, nrow(po3_env)), sim_history3))
@@ -752,30 +737,3 @@ testcomb$penalty
 testcomb$beta
 
 
-intercept_env = list(1,1,1) 
-intercept_bias = list(NA, NA, NA)
-coord = c("X", "Y")
-sp_res = 0.5
-penalty_vec = NULL 
-alpha = 1
-gamma = 0
-init.coef = list(NA, NA, NA)
-standardise = TRUE
-criterion = "BIC"
-family = "poisson" 
-tol = 1.e-7
-b.min = 1.e-6
-max.it = 25
-n.fits = 15
-noshrink = rep(list(NULL), length(quad_data))
-method = "BFGS"
-link = "logit"
-site.area = site.area
-obs.scores = NULL 
-extinct_comp=c(8)
-coloni_comp=c(9)
-area.int = FALSE
-r = NULL
-wt.vec = NULL
-pen.min = 1.e-6
-verbose = TRUE
